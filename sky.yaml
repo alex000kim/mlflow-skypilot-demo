@@ -1,0 +1,23 @@
+# To launch the cluster:
+# sky launch -c dev sky.yaml --env-file .env
+# To rerun training (i.e. only the "run" section):
+# sky exec dev sky.yaml --env-file .env 
+
+resources:
+  cloud: kubernetes
+  accelerators: H100:8
+
+workdir: .
+
+envs:
+  CONFIG_FILE: recipes/llama-3-1-8b-qlora.yaml
+
+setup: |
+  sudo apt install nvtop -y
+  pip install -U -r requirements.txt
+  FLASH_ATTENTION_SKIP_CUDA_BUILD=TRUE pip install flash-attn --no-build-isolation
+  python generate_train_dataset.py
+run: |
+  accelerate launch \
+  --num_processes 8 \
+  train.py --config $CONFIG_FILE
