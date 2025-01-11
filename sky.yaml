@@ -16,6 +16,7 @@ setup: |
   sudo apt install nvtop -y
   pip install -U -r requirements.txt
   FLASH_ATTENTION_SKIP_CUDA_BUILD=TRUE pip install flash-attn --no-build-isolation
+  wget https://storage.eu-north1.nebius.cloud/msp-certs/ca.pem -O ca.pem
   python generate_train_dataset.py
 run: |
   accelerate launch \

@@ -1,0 +1,51 @@
+# This is a multi-node version of the sky.yaml file.
+# To launch the cluster:
+# sky launch -c dev sky_multi_node.yaml --env-file .env
+# To rerun training (i.e. only the "run" section):
+# sky exec dev sky_multi_node.yaml --env-file .env 
+
+resources:
+  cloud: kubernetes
+  accelerators: H100:8
+
+num_nodes: 2
+
+workdir: .
+
+envs:
+  CONFIG_FILE: recipes/llama-3-1-8b-qlora.yaml
+
+setup: |
+  sudo apt install nvtop -y
+  pip install -U -r requirements.txt
+  FLASH_ATTENTION_SKIP_CUDA_BUILD=TRUE pip install flash-attn --no-build-isolation
+  wget https://storage.eu-north1.nebius.cloud/msp-certs/ca.pem -O ca.pem
+  python generate_train_dataset.py
+
+run: |
+  NUM_NODES=$(echo "$SKYPILOT_NODE_IPS" | wc -l)
+  HOST_ADDR=$(echo "$SKYPILOT_NODE_IPS" | head -n1)
+  MAIN_PROCESS_PORT=12345
+
+  if [ "${NUM_NODES}" -gt 1 ]; then
+    if [ "${SKYPILOT_NODE_RANK}" == "0" ]; then
+      echo "Launching training script with multi-node settings"
+      echo "Number of nodes: $NUM_NODES"
+      echo "Number of GPUs per node: $SKYPILOT_NUM_GPUS_PER_NODE"
+      echo "Main host address: $HOST_ADDR"
+      echo "Main process port: $MAIN_PROCESS_PORT"
+      echo "Total number of processes: $(($NUM_NODES * $SKYPILOT_NUM_GPUS_PER_NODE))"
+    fi
+
+    accelerate launch --num_machines $NUM_NODES \
+    --machine_rank $SKYPILOT_NODE_RANK \
+    --main_process_ip $HOST_ADDR \
+    --main_process_port $MAIN_PROCESS_PORT \
+    --num_processes $(($NUM_NODES * $SKYPILOT_NUM_GPUS_PER_NODE)) \
+    train.py --config $CONFIG_FILE
+  else
+    echo "Launching training script with single-node settings"
+    echo "Number of GPUs per node: $SKYPILOT_NUM_GPUS_PER_NODE"
+    accelerate launch --num_processes $SKYPILOT_NUM_GPUS_PER_NODE \
+    train.py --config $CONFIG_FILE
+  fi
